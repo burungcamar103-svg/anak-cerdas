@@ -121,31 +121,31 @@ export function useAIInteraction() {
 
       try {
         console.log('Menganalisis emosi untuk:', imageUri); // Logging
-        const emotion: EmotionResult = await TensorFlowService.analyzeEmotion(imageUri);
+        const emotionResult: EmotionResult = await TensorFlowService.analyzeEmotion(imageUri);
         let validationErrorMessage = '';
-        if (!emotion) {
+        if (!emotionResult) {
           validationErrorMessage = 'Hasil analisis emosi kosong atau tidak terdefinisi.';
-        } else if (typeof emotion !== 'string') {
-          validationErrorMessage = `Hasil analisis emosi bukan string, melainkan tipe: ${typeof emotion}.`;
-        } else if (!Object.values(EmotionType).includes(emotion as EmotionType)) {
-          validationErrorMessage = `Hasil analisis emosi tidak dikenal atau tidak valid: "${emotion}".`;
+        } else if (!emotionResult.emotion) {
+          validationErrorMessage = 'Properti emotion tidak ditemukan dalam hasil analisis.';
+        } else if (!Object.values(EmotionType).includes(emotionResult.emotion)) {
+          validationErrorMessage = `Hasil analisis emosi tidak dikenal atau tidak valid: "${emotionResult.emotion}".`;
         }
 
         if (validationErrorMessage) { // If any of the above conditions were met
-          console.error('analyzeEmotion Error:', validationErrorMessage, emotion); // Logging
+          console.error('analyzeEmotion Error:', validationErrorMessage, emotionResult); // Logging
           setError(validationErrorMessage);
           // Add the problematic value to the error message for more specificity
-          throw new Error(`${validationErrorMessage} Received value: ${JSON.stringify(emotion)}`);
+          throw new Error(`${validationErrorMessage} Received value: ${JSON.stringify(emotionResult)}`);
         }
-        console.log('Emosi terdeteksi:', emotion); // Logging
+        console.log('Emosi terdeteksi:', emotionResult); // Logging
         
         setState(prev => ({
           ...prev,
-          currentEmotion: emotion,
+          currentEmotion: emotionResult,
           isLoading: false,
         }));
 
-        return emotion;
+        return emotionResult;
       } catch (error) {
         let errorMessage = 'Gagal menganalisis emosi';
         if (error instanceof Error) {
