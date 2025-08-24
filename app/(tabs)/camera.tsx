@@ -10,6 +10,7 @@ import {
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, RotateCcw, Sparkles, Eye } from 'lucide-react-native';
+import { useAIInteraction } from '@/hooks/useAIInteraction';
 
 export default function CameraScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
@@ -18,6 +19,14 @@ export default function CameraScreen() {
   const [detectedObject, setDetectedObject] = useState<string | null>(null);
   const [emotion, setEmotion] = useState<string | null>(null);
   const cameraRef = useRef<any>(null);
+
+  const { detectObjects, analyzeEmotion, isLoading, error } = useAIInteraction();
+
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Error AI', error);
+    }
+  }, [error]);
 
   if (!permission) {
     return (
@@ -52,48 +61,89 @@ export default function CameraScreen() {
   };
 
   const analyzeImage = async () => {
-    if (Platform.OS === 'web') {
-      // Simulate object detection for web demo
-      setIsAnalyzing(true);
-      
-      setTimeout(() => {
-        const objects = ['boneka beruang', 'buku', 'apel', 'bola', 'mobil mainan', 'pensil'];
-        const randomObject = objects[Math.floor(Math.random() * objects.length)];
-        setDetectedObject(randomObject);
-        setIsAnalyzing(false);
-        
-        // Generate educational content about the object
-        Alert.alert(
-          'Benda Terdeteksi!',
-          `Aku bisa melihat ${randomObject}! Tahukah kamu bahwa ${getObjectFact(randomObject)}`,
-          [{ text: 'Keren!', style: 'default' }]
-        );
-      }, 2000);
-    } else {
-      // TODO: Implement actual TensorFlow Lite object detection
-      Alert.alert('Fitur Segera Hadir', 'Deteksi objek akan tersedia di pembaruan berikutnya!');
+    setIsAnalyzing(true);
+    setDetectedObject(null);
+    setEmotion(null);
+
+    if (!cameraRef.current) {
+      console.error('cameraRef.current is null or undefined before takePictureAsync');
+      Alert.alert('Error', 'Kamera tidak siap.');
+      setIsAnalyzing(false);
+      return;
+    }
+
+    try {
+      console.log('Attempting to take picture...');
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: true,
+      });
+      console.log('Picture taken successfully.');
+
+      if (photo.base64) {
+        const result = await detectObjects(`data:image/jpeg;base64,${photo.base64}`);
+        if (result && result.length > 0) {
+          const primaryObject = result[0].object;
+          setDetectedObject(primaryObject);
+          Alert.alert(
+            'Benda Terdeteksi!',
+            `Aku bisa melihat ${primaryObject}! Tahukah kamu bahwa ${getObjectFact(primaryObject)}`,
+            [{ text: 'Keren!', style: 'default' }]
+          );
+        } else {
+          Alert.alert('Tidak Ditemukan', 'Tidak ada benda yang terdeteksi.');
+        }
+      } else {
+        Alert.alert('Error', 'Gagal mengambil gambar.');
+      }
+    } catch (err) {
+      console.error('Error analyzing image:', err);
+      Alert.alert('Error', `Gagal menganalisis gambar: ${error || 'Terjadi kesalahan.'}`);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   const detectEmotion = async () => {
-    if (Platform.OS === 'web') {
-      setIsAnalyzing(true);
-      
-      setTimeout(() => {
-        const emotions = ['senang', 'bersemangat', 'penasaran', 'fokus'];
-        const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
-        setEmotion(randomEmotion);
-        setIsAnalyzing(false);
-        
-        Alert.alert(
-          'Emosi Terdeteksi!',
-          `Kamu terlihat ${randomEmotion}! ${getEmotionResponse(randomEmotion)}`,
-          [{ text: 'Terima kasih!', style: 'default' }]
-        );
-      }, 1500);
-    } else {
-      // TODO: Implement actual emotion detection
-      Alert.alert('Fitur Segera Hadir', 'Deteksi emosi akan tersedia di pembaruan berikutnya!');
+    setIsAnalyzing(true);
+    setDetectedObject(null);
+    setEmotion(null);
+
+    if (!cameraRef.current) {
+      console.error('cameraRef.current is null or undefined before takePictureAsync');
+      Alert.alert('Error', 'Kamera tidak siap.');
+      setIsAnalyzing(false);
+      return;
+    }
+
+    try {
+      console.log('Attempting to take picture...');
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: true,
+      });
+      console.log('Picture taken successfully.');
+
+      if (photo.base64) {
+        const result = await analyzeEmotion(`data:image/jpeg;base64,${photo.base64}`);
+        if (result) {
+          setEmotion(result.emotion);
+          Alert.alert(
+            'Emosi Terdeteksi!',
+            `Kamu terlihat ${result.emotion}! ${getEmotionResponse(result.emotion)}`,
+            [{ text: 'Terima kasih!', style: 'default' }]
+          );
+        } else {
+          Alert.alert('Tidak Ditemukan', 'Tidak ada emosi yang terdeteksi.');
+        }
+      } else {
+        Alert.alert('Error', 'Gagal mengambil gambar.');
+      }
+    } catch (err) {
+      console.error('Error detecting emotion:', err);
+      Alert.alert('Error', `Gagal mendeteksi emosi: ${error || 'Terjadi kesalahan.'}`);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -156,18 +206,22 @@ export default function CameraScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.mainButton, isAnalyzing && styles.analyzingButton]} 
+            style={[styles.mainButton, (isAnalyzing || isLoading) && styles.analyzingButton]} 
             onPress={analyzeImage}
-            disabled={isAnalyzing}
+            disabled={isAnalyzing || isLoading}
           >
-            {isAnalyzing ? (
+            {(isAnalyzing || isLoading) ? (
               <Sparkles size={30} color="#FFFFFF" />
             ) : (
               <Eye size={30} color="#FFFFFF" />
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.controlButton} onPress={detectEmotion}>
+          <TouchableOpacity 
+            style={styles.controlButton} 
+            onPress={detectEmotion}
+            disabled={isAnalyzing || isLoading}
+          >
             <Text style={styles.emotionIcon}>😊</Text>
           </TouchableOpacity>
         </View>

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import AIService, { StoryRequest, StoryResponse } from '@/services/AIService';
-import TensorFlowService, { DetectionResult, EmotionResult } from '@/services/TensorFlowService';
+import TensorFlowService, { DetectionResult, EmotionResult, EmotionType } from '@/services/TensorFlowService';
 import ContentFilter from '@/utils/ContentFilter';
 
 export interface AIInteractionState {
@@ -92,29 +92,74 @@ export function useAIInteraction() {
   }, []);
 
   /**
-   * Analyze facial emotion
-   */
-  const analyzeEmotion = useCallback(async (imageUri: string) => {
-    try {
+   * Analyzes facial emotion from a given image URI.
+    * Handles loading states, errors, and updates the emotion state.
+    *
+    * @param {string} imageUri - The URI of the image to analyze.
+    * @returns {Promise<Emotion | null>} A promise that resolves with the detected emotion or null if an error occurs.
+    * @throws {Error} If the image URI is invalid or the analysis fails.
+    */
+   const analyzeEmotion = useCallback(async (imageUri: string) => {
       setLoading(true);
       setError(null);
 
-      const emotion = await TensorFlowService.analyzeEmotion(imageUri);
-      
-      setState(prev => ({
-        ...prev,
-        currentEmotion: emotion,
-        isLoading: false,
-      }));
+      if (typeof imageUri !== 'string' || !imageUri) {
+        const errorMessage = 'Image URI tidak valid atau kosong.';
+        console.error('analyzeEmotion Error:', errorMessage); // Logging
+        setError(errorMessage);
+        setLoading(false);
+        throw new Error(errorMessage);
+      }
 
-      return emotion;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Gagal menganalisis emosi';
-      setError(errorMessage);
-      setLoading(false);
-      throw error;
-    }
-  }, []);
+      if (!TensorFlowService || typeof TensorFlowService.analyzeEmotion !== 'function') {
+        const errorMessage = 'TensorFlowService atau metode analyzeEmotion tidak tersedia.';
+        console.error('analyzeEmotion Error:', errorMessage); // Logging
+        setError(errorMessage);
+        setLoading(false);
+        throw new Error(errorMessage);
+      }
+
+      try {
+        console.log('Menganalisis emosi untuk:', imageUri); // Logging
+        const emotion: EmotionResult = await TensorFlowService.analyzeEmotion(imageUri);
+        let validationErrorMessage = '';
+        if (!emotion) {
+          validationErrorMessage = 'Hasil analisis emosi kosong atau tidak terdefinisi.';
+        } else if (typeof emotion !== 'string') {
+          validationErrorMessage = `Hasil analisis emosi bukan string, melainkan tipe: ${typeof emotion}.`;
+        } else if (!Object.values(EmotionType).includes(emotion as EmotionType)) {
+          validationErrorMessage = `Hasil analisis emosi tidak dikenal atau tidak valid: "${emotion}".`;
+        }
+
+        if (validationErrorMessage) { // If any of the above conditions were met
+          console.error('analyzeEmotion Error:', validationErrorMessage, emotion); // Logging
+          setError(validationErrorMessage);
+          // Add the problematic value to the error message for more specificity
+          throw new Error(`${validationErrorMessage} Received value: ${JSON.stringify(emotion)}`);
+        }
+        console.log('Emosi terdeteksi:', emotion); // Logging
+        
+        setState(prev => ({
+          ...prev,
+          currentEmotion: emotion,
+          isLoading: false,
+        }));
+
+        return emotion;
+      } catch (error) {
+        let errorMessage = 'Gagal menganalisis emosi';
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        }
+        console.error('analyzeEmotion Error:', errorMessage, error); // Logging
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    }, []);
 
   /**
    * Get educational content about detected objects
